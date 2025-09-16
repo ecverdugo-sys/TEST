@@ -1,16 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- Para elegir archivos con el selector del sistema (SAF). 
-         No pedimos READ_EXTERNAL_STORAGE (no hace falta en Android 10+ con ACTION_OPEN_DOCUMENT). -->
-
     <application
         android:label="Quiz por Temas"
         android:icon="@mipmap/ic_launcher"
         android:allowBackup="true"
         android:supportsRtl="true"
-        android:usesCleartextTraffic="true"
-        android:theme="@style/Theme.Material3.DayNight.NoActionBar">
+        android:theme="@style/Theme.Material3.DayNight.NoActionBar"
+        android:usesCleartextTraffic="true">
+        <!-- usesCleartextTraffic=true solo afecta si tu HTML carga http://; si no lo usas, puedes quitarlo -->
 
         <activity
             android:name=".MainActivity"
@@ -23,4 +21,3 @@
 
     </application>
 </manifest>
-
