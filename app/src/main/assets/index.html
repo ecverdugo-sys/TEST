@@ -1,72 +1,21 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="es">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Cuestionario por Temas</title>
-    <link rel="stylesheet" href="styles.css">
+  <meta charset="utf-8">
+  <title>Cuestionario</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <!-- OJO: rutas relativas -->
+  <link rel="stylesheet" href="./styles.css">
 </head>
 <body>
-    <h1 style="color: red; text-align: center; text-transform: uppercase;">CUESTIONARIO POR TEMAS (CON PREGUNTAS FALLADAS)</h1>
-    <input type="file" id="fileInput">
-    
-    <!-- Selector por temas -->
-    <div id="themeSelector">
-        <label for="themeDropdown">Selecciona por temas:</label>
-        <select id="themeDropdown" multiple>
-        </select>
-        <button onclick="applyThemeSelection()">Aplicar selección de temas</button>
-        <div id="selectedThemes">
-            <strong>Temas seleccionados:</strong>
-            <ul id="selectedThemesList"></ul>
-        </div>
-    </div>
+  <h1>Cuestionario</h1>
 
-    <!-- Selector por números -->
-    <div id="numberSelector">
-        <label for="numbersInput">O selecciona por números de pregunta:</label>
-        <input type="text" id="numbersInput" placeholder="Ejemplo: 324, 567, 802, 456">
-        <p id="numbersExample">Introduce los números de pregunta separados por comas</p>
-        <button onclick="applyNumberSelection()">Aplicar selección por números</button>
-    </div>
+  <p>Selecciona tu archivo TXT:</p>
+  <input id="fileInput" type="file" accept=".txt,text/plain" />
 
-    <div id="quizContainer" style="display:none;">
-        <p id="questionNumber"></p>
-        <p id="questionText"></p>
-        <div id="answerOptions"></div>
-        <p id="feedback"></p>
-        <button id="nextButton">Siguiente</button>
-        <button id="skipButton" onclick="skipQuestion()">No responder a la pregunta</button>
-        <button id="statsButton" onclick="showStats()">ESTADÍSTICAS</button>
-    </div>
-    <div id="stats">
-        <p>Total de preguntas: <span id="totalQuestions"></span></p>
-        <p>Preguntas respondidas: <span id="answeredCount"></span> | Preguntas restantes: <span id="remainingCount"></span></p>
-        <p>Preguntas acertadas: <span id="correctCount"></span> | Preguntas falladas: <span id="incorrectCount"></span></p>
-        <p>Puntuación: <span id="score"></span></p>
-        <p id="timer">Tiempo transcurrido: 00:00:00</p>
-    </div>
+  <pre id="preview" style="white-space: pre-wrap;"></pre>
 
-    <div id="statsModal" style="display:none;">
-        <div id="statsContent">
-            <h2>Estadísticas por Tema</h2>
-            <table id="statsTable">
-                <thead>
-                    <tr>
-                        <th>Tema</th>
-                        <th>Preguntas presentadas</th>
-                        <th>Preguntas acertadas</th>
-                        <th>Preguntas falladas</th>
-                        <th>Porcentaje de acierto</th>
-                    </tr>
-                </thead>
-                <tbody>
-                </tbody>
-            </table>
-            <button onclick="closeStats()">Cerrar</button>
-        </div>
-    </div>
-
-    <script src="script.js"></script>
+  <!-- OJO: ruta relativa -->
+  <script src="./script.js"></script>
 </body>
 </html>
