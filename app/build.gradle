@@ -18,8 +18,8 @@ android {
     buildFeatures {
         compose true
     }
-    composeOptions {
-    kotlinCompilerExtensionVersion '1.6.8'
+   composeOptions {
+    kotlinCompilerExtensionVersion '1.5.14'
 }
     kotlinOptions {
         jvmTarget = '17'
