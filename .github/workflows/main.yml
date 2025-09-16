@@ -23,18 +23,21 @@ jobs:
           yes | sdkmanager --licenses
           sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools"
 
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v3
+      # Genera el wrapper de Gradle y fija la versión
+      - name: Generate Gradle wrapper 8.9
+        run: gradle wrapper --gradle-version 8.9
 
+      # Construye con logs detallados usando el wrapper
       - name: Build (verbose)
         run: |
-          gradle --version || true
-          gradle tasks --all || true
-          gradle assembleDebug --no-daemon --info --stacktrace
+          ./gradlew --version
+          ./gradlew assembleDebug --no-daemon --info --stacktrace
         shell: bash
 
       - name: Upload APK
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: app-debug.apk
           path: app/build/outputs/apk/debug/app-debug.apk
+
