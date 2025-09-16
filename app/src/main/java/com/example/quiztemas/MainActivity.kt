@@ -6,9 +6,9 @@ import android.net.Uri
 import android.os.Bundle
 import android.webkit.*
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
@@ -21,7 +21,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Launcher que recibe el archivo elegido por el usuario y se lo entrega al WebView
+        // Recibe el archivo elegido y lo pasa al WebView
         filePickerLauncher =
             registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
                 val uris: Array<Uri>? = if (result.resultCode == Activity.RESULT_OK) {
@@ -49,49 +49,43 @@ class MainActivity : ComponentActivity() {
                             domStorageEnabled = true
                             allowFileAccess = true
                             allowContentAccess = true
-                            // por si tu HTML usa fetch() a ficheros locales
-                            setSupportMultipleWindows(false)
+                            // por si tu JS lee entre file:// (FileReader/fetch local)
+                            allowUniversalAccessFromFileURLs = true
                         }
 
-                        webViewClient = object : WebViewClient() {
-                            override fun shouldOverrideUrlLoading(
-                                view: WebView?,
-                                request: WebResourceRequest?
-                            ): Boolean = false
-                        }
+                        webViewClient = WebViewClient()
 
-                        // *** CLAVE: file chooser para <input type="file"> ***
+                        // Habilita el selector del sistema para <input type="file">
                         webChromeClient = object : WebChromeClient() {
                             override fun onShowFileChooser(
                                 webView: WebView?,
-                                filePathCallback: ValueCallback<Array<Uri>>?,
-                                fileChooserParams: FileChooserParams?
+                                callback: ValueCallback<Array<Uri>>?,
+                                params: FileChooserParams?
                             ): Boolean {
-                                this@MainActivity.filePathCallback?.onReceiveValue(null)
-                                this@MainActivity.filePathCallback = filePathCallback
+                                filePathCallback?.onReceiveValue(null)
+                                filePathCallback = callback
 
-                                // MIME para TXT (y permite también elegir cualquier archivo si hiciera falta)
-                                val intent = fileChooserParams?.createIntent()?.apply {
-                                    type = "text/plain"
-                                    putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("text/plain"))
-                                    addCategory(Intent.CATEGORY_OPENABLE)
+                                val intent = try {
+                                    params?.createIntent()
+                                } catch (_: Exception) {
+                                    null
                                 } ?: Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
                                     addCategory(Intent.CATEGORY_OPENABLE)
-                                    type = "text/plain"
+                                    type = "*/*"
                                 }
 
                                 return try {
                                     filePickerLauncher.launch(intent)
                                     true
                                 } catch (e: Exception) {
-                                    this@MainActivity.filePathCallback?.onReceiveValue(null)
-                                    this@MainActivity.filePathCallback = null
+                                    filePathCallback?.onReceiveValue(null)
+                                    filePathCallback = null
                                     false
                                 }
                             }
                         }
 
-                        // Carga tu app web local desde /assets
+                        // Carga tu app web ORIGINAL empaquetada
                         loadUrl("file:///android_asset/index.html")
                     }
                 }
