@@ -56,13 +56,19 @@ function updateFailedQuestionsDisplay() {
                 <strong>Preguntas falladas en el intento anterior:</strong><br>
                 ${numbersText}
             </div>
-        `;
+            <div style="margin-top:8px;">
+                <button id="restartFailedBtn" onclick="restartWithFailedQuestions()">Reiniciar cuestionario SOLO con estas falladas</button>
+            </div>
+    `;
     } else {
         failedQuestionsDisplay.innerHTML = `
             <div id="failedQuestionsText">
                 No hay preguntas falladas en intentos anteriores.
             </div>
-        `;
+            <div style="margin-top:8px;">
+                <button id="restartFailedBtn" onclick="restartWithFailedQuestions()" disabled>Reiniciar cuestionario SOLO con estas falladas</button>
+            </div>
+    `;
     }
 }
 
@@ -148,6 +154,20 @@ function populateThemeDropdown() {
     });
 }
 
+
+function toggleSelectAllThemes(all) {
+    const themeDropdown = document.getElementById('themeDropdown');
+    if (!themeDropdown) return;
+    Array.from(themeDropdown.options).forEach(opt => opt.selected = all);
+    // Reflejar lista visible sin alterar el flujo original (filtrado sólo al pulsar "Aplicar")
+    if (typeof selectedThemes !== 'undefined') {
+        selectedThemes = all ? Array.from(themeDropdown.options).map(o => o.value) : [];
+    }
+    if (typeof updateSelectedThemesList === 'function') {
+        updateSelectedThemesList();
+    }
+}
+
 function applyThemeSelection() {
     const themeDropdown = document.getElementById('themeDropdown');
     selectedThemes = Array.from(themeDropdown.selectedOptions).map(option => option.value);
@@ -164,6 +184,13 @@ function applyThemeSelection() {
     currentQuestionIndex = 0;
     resetQuizState();
     showQuestion();
+
+    // Desplazar al contenedor del cuestionario para comenzar directamente
+    const qc = document.getElementById('quizContainer');
+    if (qc) {
+        qc.scrollIntoView({behavior: 'smooth', block: 'start'});
+    }
+    
 }
 
 function applyNumberSelection() {
@@ -235,6 +262,17 @@ function shuffleQuestions() {
     }
 }
 
+
+// --- Añadido mínimo: orden aleatorio de opciones por pregunta ---
+function getShuffledIndices(n) {
+    const arr = Array.from({length: n}, (_, i) => i);
+    for (let i = arr.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
+}
+
 function showQuestion() {
     if (currentQuestionIndex >= questions.length) {
         showFinalResult();
@@ -255,15 +293,20 @@ function showQuestion() {
     const answerOptionsContainer = document.getElementById('answerOptions');
     answerOptionsContainer.innerHTML = '';
 
-    question.options.forEach((option, index) => {
+    
+    // Generar orden aleatorio de opciones por pregunta (estable al responder)
+    if (!question.optionOrder || !Array.isArray(question.optionOrder) || question.optionOrder.length !== question.options.length) {
+        question.optionOrder = getShuffledIndices(question.options.length);
+    }
+
+    question.optionOrder.forEach((origIdx, visibleIdx) => {
         const button = document.createElement('button');
-        button.textContent = option;
-        button.onclick = () => selectAnswer(index);
+        button.textContent = question.options[origIdx];
+        button.onclick = () => selectAnswer(visibleIdx); // visibleIdx -> índice visual
         button.disabled = question.answered;
         answerOptionsContainer.appendChild(button);
     });
-
-    document.getElementById('feedback').textContent = '';
+        document.getElementById('feedback').textContent = '';
     document.getElementById('nextButton').style.display = 'none';
 }
 
@@ -271,7 +314,14 @@ function selectAnswer(index) {
     const question = questions[currentQuestionIndex];
     if (question.answered) return;
 
-    const selectedAnswer = String.fromCharCode(97 + index);
+    
+    // Convertir índice visual al índice original
+    const visibleIndex = index;
+    const originalIndex = (Array.isArray(question.optionOrder) && question.optionOrder.length > visibleIndex)
+        ? question.optionOrder[visibleIndex]
+        : visibleIndex;
+    const selectedAnswer = String.fromCharCode(97 + originalIndex);
+    
     question.selectedAnswer = selectedAnswer;
 
     // Parche mínimo: si no hay respuesta correcta en el TXT, no computa ni penaliza
@@ -495,4 +545,27 @@ function showStats() {
 
 function closeStats() {
     document.getElementById('statsModal').style.display = 'none';
+}
+
+function restartWithFailedQuestions() {
+    if (!previousFailedQuestions || previousFailedQuestions.length === 0) {
+        alert('No hay preguntas falladas del intento anterior.');
+        return;
+    }
+    questions = previousFailedQuestions.map(q => ({...q}));
+    questions.forEach(q => {
+        q.answered = false;
+        if (q.optionOrder) delete q.optionOrder;
+    });
+
+    currentFailedQuestions = [];
+    currentQuestionIndex = 0;
+    resetQuizState();
+    shuffleQuestions();
+    showQuestion();
+
+    const qc = document.getElementById('quizContainer');
+    if (qc) {
+        qc.scrollIntoView({behavior: 'smooth', block: 'start'});
+    }
 }

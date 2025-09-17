@@ -15,6 +15,11 @@
         <label for="themeDropdown">Selecciona por temas:</label>
         <select id="themeDropdown" multiple>
         </select>
+        <label style="display:block; margin-top:8px;">
+            <input type="checkbox" id="selectAllThemes" onchange="toggleSelectAllThemes(this.checked)">
+            Seleccionar todos los temas
+        </label>
+
         <button onclick="applyThemeSelection()">Aplicar selección de temas</button>
         <div id="selectedThemes">
             <strong>Temas seleccionados:</strong>
