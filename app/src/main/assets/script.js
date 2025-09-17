@@ -296,7 +296,7 @@ function showQuestion() {
     
     // Generar orden aleatorio de opciones por pregunta (estable al responder)
     if (!question.optionOrder || !Array.isArray(question.optionOrder) || question.optionOrder.length !== question.options.length) {
-        question.optionOrder = getShuffledIndices(question.options.length);
+        question.optionOrder = question.options.map((_, i) => i);
     }
 
     question.optionOrder.forEach((origIdx, visibleIdx) => {
