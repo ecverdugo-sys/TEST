@@ -1,3 +1,7 @@
+let isRetryRun = false;
+let retryRunInitialCount = 0;
+let retryInfoBanner = null;
+let retryRunInitialList = [];
 let questions = [];
 let currentQuestionIndex = 0;
 let answeredQuestions = 0;
@@ -48,7 +52,7 @@ function updateFailedQuestionsDisplay() {
     if (!failedQuestionsDisplay) return;
 
     if (previousFailedQuestions.length > 0) {
-        const failedNumbers = previousFailedQuestions.map(q => q.number).sort((a, b) => a - b);
+        const failedNumbers = (isRetryRun && retryRunInitialList.length ? retryRunInitialList : previousFailedQuestions.map(q => q.number)).sort((a, b) => a - b);
         let numbersText = failedNumbers.join(', ');
         
         failedQuestionsDisplay.innerHTML = `
@@ -169,6 +173,7 @@ function toggleSelectAllThemes(all) {
 }
 
 function applyThemeSelection() {
+    isRetryRun = false;
     const themeDropdown = document.getElementById('themeDropdown');
     selectedThemes = Array.from(themeDropdown.selectedOptions).map(option => option.value);
     updateSelectedThemesList();
@@ -194,6 +199,7 @@ function applyThemeSelection() {
 }
 
 function applyNumberSelection() {
+    isRetryRun = false;
     const numbersInput = document.getElementById('numbersInput').value.trim();
     if (!numbersInput) {
         alert("Por favor, introduce números de preguntas.");
@@ -294,11 +300,10 @@ function showQuestion() {
     answerOptionsContainer.innerHTML = '';
 
     
-    // Generar orden aleatorio de opciones por pregunta (estable al responder)
+    // Orden fijo alfabético de opciones por pregunta (a, b, c, d)
     if (!question.optionOrder || !Array.isArray(question.optionOrder) || question.optionOrder.length !== question.options.length) {
         question.optionOrder = question.options.map((_, i) => i);
     }
-
     question.optionOrder.forEach((origIdx, visibleIdx) => {
         const button = document.createElement('button');
         button.textContent = question.options[origIdx];
@@ -548,7 +553,11 @@ function closeStats() {
 }
 
 function restartWithFailedQuestions() {
-    if (!previousFailedQuestions || previousFailedQuestions.length === 0) {
+    isRetryRun = true;
+    retryRunInitialCount = (previousFailedQuestions || []).length;
+    retryRunInitialList = (previousFailedQuestions || []).map(q => q.number).sort((a,b)=>a-b);
+    if (typeof updateRetryInfoBanner === 'function') updateRetryInfoBanner();
+if (!previousFailedQuestions || previousFailedQuestions.length === 0) {
         alert('No hay preguntas falladas del intento anterior.');
         return;
     }
@@ -563,6 +572,7 @@ function restartWithFailedQuestions() {
     resetQuizState();
     shuffleQuestions();
     showQuestion();
+    if (typeof updateFailedQuestionsDisplay === 'function') updateFailedQuestionsDisplay();
 
     const qc = document.getElementById('quizContainer');
     if (qc) {
