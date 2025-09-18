@@ -1,581 +1,425 @@
-let isRetryRun = false;
-let retryRunInitialCount = 0;
-let retryInfoBanner = null;
-let retryRunInitialList = [];
-let questions = [];
-let currentQuestionIndex = 0;
-let answeredQuestions = 0;
-let score = 0;
-let correctAnswersCount = 0;
-let incorrectAnswersCount = 0;
-let temasPorPregunta = {};
-let statsByTopic = {};
-let selectedThemes = [];
-let startTime = null;
-let timerInterval = null;
-let allQuestions = [];
-let previousFailedQuestions = [];
-let currentFailedQuestions = [];
-let failedQuestionsDisplay = null;
+// script.js — auto-scroll al iniciar + orden numérico de temas + parser robusto + aleatorio + persistencia falladas
+(() => {
+  // Estado
+  let questions = [];
+  let allQuestions = [];
+  let temasPorPregunta = {};
+  let selectedThemes = [];
+  let statsByTopic = {};
+  let previousFailedQuestions = [];
+  let currentFailedQuestions = [];
+  let currentQuestionIndex = 0;
+  let answeredQuestions = 0;
+  let score = 0;
+  let correctAnswersCount = 0;
+  let incorrectAnswersCount = 0;
+  let startTime = null;
+  let timerInterval = null;
 
-document.getElementById('fileInput').addEventListener('change', handleFileUpload);
-document.getElementById('nextButton').addEventListener('click', showNextQuestion);
+  // Persistencia del listado de falladas del intento anterior durante el "reinicio con falladas"
+  let isRetryRun = false;
+  let retryRunInitialList = [];
 
-function handleFileUpload(event) {
-    const file = event.target.files[0];
-    if (!file) return;
+  // Utilidades
+  const $ = sel => document.querySelector(sel);
+  const $$ = sel => Array.from(document.querySelectorAll(sel));
+  const norm = s => (s||'').replace(/\r/g,'').replace(/[\u2012\u2013\u2014\u2212]/g,'-');
+  const numFromTema = t => {
+    const m = String(t||'').match(/tema\s+(\d+)/i);
+    return m ? parseInt(m[1],10) : Number.POSITIVE_INFINITY;
+  };
 
+  function logStatus(msg, isError=false){
+    const el = $('#loadStatus');
+    if(!el) return;
+    el.textContent = msg;
+    el.style.color = isError ? 'crimson' : '#64748b';
+  }
+
+  function shuffleInPlace(arr){
+    for(let i=arr.length-1; i>0; i--){
+      const j = Math.floor(Math.random()*(i+1));
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+  }
+
+  function scrollToQuiz(){
+    const qc = document.getElementById('quizContainer');
+    if (qc) qc.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  // Listeners base
+  document.addEventListener('DOMContentLoaded', () => {
+    const input = $('#fileInput') || document.querySelector('input[type="file"]');
+    if (input) input.addEventListener('change', onFileSelected, { once:false });
+    $('#applyThemesBtn')?.addEventListener('click', applyThemeSelection);
+    $('#clearThemesBtn')?.addEventListener('click', () => {
+      const sel = $('#themeDropdown');
+      if(!sel) return;
+      Array.from(sel.options).forEach(o => o.selected = false);
+      selectedThemes = [];
+      updateSelectedThemesList();
+      isRetryRun = false; retryRunInitialList = [];
+    });
+    $('#selectAllThemes')?.addEventListener('change', e => toggleSelectAllThemes(e.target.checked));
+    $('#applyNumbersBtn')?.addEventListener('click', applyNumberSelection);
+    $('#clearNumbersBtn')?.addEventListener('click', () => { $('#numbersInput').value=''; isRetryRun=false; retryRunInitialList=[]; });
+    $('#nextButton')?.addEventListener('click', showNextQuestion);
+    $('#skipButton')?.addEventListener('click', skipQuestion);
+    $('#statsButton')?.addEventListener('click', showStats);
+    $('#closeStatsBtn')?.addEventListener('click', closeStats);
+  });
+
+  // Carga de archivo
+  function onFileSelected(e){
+    const file = e.target.files?.[0];
+    if(!file){ logStatus('No se seleccionó archivo.'); return; }
+    logStatus(`Leyendo "${file.name}"...`);
     const reader = new FileReader();
-    reader.onload = function(e) {
-        const content = e.target.result;
-        parseTemario(content);
-        parseQuestions(content);
+    reader.onload = ev => {
+      try {
+        const content = ev.target.result;
+        const ok = parseAll(content);
+        if (!ok){
+          alert('No se detectaron preguntas. Revisa el TXT.');
+          logStatus('No se detectaron preguntas en el archivo.', true);
+          return;
+        }
         allQuestions = [...questions];
         populateThemeDropdown();
-        document.getElementById('quizContainer').style.display = 'block';
+        $('#themeSelector').style.display = 'block';
+        $('#numberSelector').style.display = 'block';
+        $('#quizContainer').style.display = 'block';
+        $('#stats').style.display = 'block';
+        $('#failedPanel').style.display = 'block';
         updateStats();
         startTimer();
         createFailedQuestionsDisplay();
+        logStatus(`Cargado: ${questions.length} preguntas.`);
+      } catch(err){
+        console.error(err);
+        logStatus('Error procesando el archivo.', true);
+        alert('Error procesando el archivo. Revisa la consola (F12).');
+      }
+    };
+    reader.onerror = () => {
+      logStatus('No se pudo leer el archivo.', true);
+      alert('No se pudo leer el archivo.');
     };
     reader.readAsText(file);
-}
+  }
 
-function createFailedQuestionsDisplay() {
-    failedQuestionsDisplay = document.createElement('div');
-    failedQuestionsDisplay.id = 'failedQuestionsDisplay';
-    failedQuestionsDisplay.style.marginBottom = '20px';
-    document.getElementById('quizContainer').prepend(failedQuestionsDisplay);
-    updateFailedQuestionsDisplay();
-}
+  function parseAll(content){
+    parseTemario(content);
+    parseQuestions(content);
+    return questions.length > 0;
+  }
 
-function updateFailedQuestionsDisplay() {
-    if (!failedQuestionsDisplay) return;
-
-    if (previousFailedQuestions.length > 0) {
-        const failedNumbers = (isRetryRun && retryRunInitialList.length ? retryRunInitialList : previousFailedQuestions.map(q => q.number)).sort((a, b) => a - b);
-        let numbersText = failedNumbers.join(', ');
-        
-        failedQuestionsDisplay.innerHTML = `
-            <div id="failedQuestionsText">
-                <strong>Preguntas falladas en el intento anterior:</strong><br>
-                ${numbersText}
-            </div>
-            <div style="margin-top:8px;">
-                <button id="restartFailedBtn" onclick="restartWithFailedQuestions()">Reiniciar cuestionario SOLO con estas falladas</button>
-            </div>
-    `;
-    } else {
-        failedQuestionsDisplay.innerHTML = `
-            <div id="failedQuestionsText">
-                No hay preguntas falladas en intentos anteriores.
-            </div>
-            <div style="margin-top:8px;">
-                <button id="restartFailedBtn" onclick="restartWithFailedQuestions()" disabled>Reiniciar cuestionario SOLO con estas falladas</button>
-            </div>
-    `;
-    }
-}
-
-function parseTemario(content) {
-    const temarioSection = content.split('TEMARIO')[1]?.split('PREGUNTAS:')[0];
-    if (!temarioSection) return;
-
-    const lines = temarioSection.split('\n');
+  // ---- Parser Temario
+  function parseTemario(content){
+    temasPorPregunta = {};
+    const lines = norm(content).split('\n');
     let currentBloque = '';
-    let currentTema = '';
+    let temaPend = null;
+    const temaLinea = /^\s*TEMA\s+(\d+)\.?\s*(.*)$/i;
+    const preguntasLinea = /^\s*PREGUNTAS?\s*:?\s*(\d+)\s*[-–—]\s*(\d+)\s*$/i;
+    const bloqueLinea = /^\s*BLOQUE\s+\d+.*$/i;
 
-    for (let line of lines) {
-        if (line.startsWith('Bloque')) {
-            currentBloque = line.trim();
-        } else if (line.startsWith('Tema')) {
-            currentTema = line.trim();
-        } else if (line.startsWith('Preguntas')) {
-            const [start, end] = line.split('Preguntas')[1].trim().split('-').map(Number);
-            for (let i = start; i <= end; i++) {
-                temasPorPregunta[i] = { bloque: currentBloque, tema: currentTema };
-            }
+    for (let i=0;i<lines.length;i++){
+      const line = lines[i].trim();
+      if (!line) continue;
+      if (bloqueLinea.test(line)){ currentBloque = line; continue; }
+      const mTema = line.match(temaLinea);
+      if (mTema){
+        temaPend = { n: parseInt(mTema[1],10), titulo: (mTema[2]||'').trim() };
+        const same = line.match(/PREGUNTAS?\s*:?\s*(\d+)\s*[-–—]\s*(\d+)/i);
+        if (same){
+          const a = parseInt(same[1],10), b = parseInt(same[2],10);
+          for (let q=a;q<=b;q++){ temasPorPregunta[q] = { bloque: currentBloque, tema: `Tema ${temaPend.n}. ${temaPend.titulo}`.trim() }; }
+          temaPend = null;
         }
+        continue;
+      }
+      const mPreg = line.match(preguntasLinea);
+      if (mPreg && temaPend){
+        const a = parseInt(mPreg[1],10), b = parseInt(mPreg[2],10);
+        for (let q=a;q<=b;q++){ temasPorPregunta[q] = { bloque: currentBloque, tema: `Tema ${temaPend.n}. ${temaPend.titulo}`.trim() }; }
+        temaPend = null;
+      }
     }
-}
+  }
 
-function parseQuestions(content) {
+  // ---- Parser Preguntas
+  function parseQuestions(content){
     questions = [];
     const lines = content.split('\n');
-    let currentQuestion = null;
-    const answerPattern = /RESPUESTAS\s+CORRECTAS\s*:/i;
+    const idxAnswers = lines.findIndex(l => /RESPUESTAS\s+CORRECTAS\s*:?\s*$/i.test(norm(l)));
+    const partQ = idxAnswers >= 0 ? lines.slice(0, idxAnswers) : lines;
+    const partA = idxAnswers >= 0 ? lines.slice(idxAnswers+1) : [];
 
-    for (let line of lines) {
-        if (line.startsWith('PREGUNTA Nº')) {
-            if (currentQuestion) {
-                questions.push(currentQuestion);
-            }
-            currentQuestion = {
-                number: parseInt(line.split('Nº')[1]),
-                text: line.trim(),
-                options: [],
-                correctAnswer: '',
-                answered: false,
-                selectedAnswer: null
-            };
-        } else if (line.trim().match(/^[a-d]\)/)) {
-            currentQuestion?.options.push(line.trim());
-        } else if (answerPattern.test(line)) {
-            break;
-        }
-    }
+    let cur = null;
+    const startRegexes = [
+      /^\s*PREGUNTA\s*N[ºo°]\s*(\d+)\s*[.\-–—]?\s*(.*)$/i,
+      /^\s*(\d+)\s*[.\-–—]\s*(.*)$/
+    ];
+    const optRegex = /^\s*([a-dA-D])\)\s*(.*)$/;
 
-    if (currentQuestion) {
-        questions.push(currentQuestion);
-    }
+    for (let i=0;i<partQ.length;i++){
+      const raw = partQ[i].replace('\r','');
+      const t = raw.trim();
 
-    const answerSection = content.split(answerPattern)[1];
-    if (!answerSection) return;
-
-    const answerLines = answerSection.replace(/\r/g,'').split('\n');
-    for (let answerLine of answerLines) {
-        const line = answerLine.trim().replace(/[\u2012\u2013\u2014\u2212]/g, '-');
-        const m = line.match(/^(\d+)\s*[-:]*\s*([a-dA-D])/);
-        if (!m) continue;
-        const number = parseInt(m[1]);
-        const answer = m[2].toLowerCase();
-        const question = questions.find(q => q.number === number);
-        if (question) {
-            question.correctAnswer = answer;
-        }
-    }
-}
-
-function populateThemeDropdown() {
-    const themeDropdown = document.getElementById('themeDropdown');
-    themeDropdown.innerHTML = '';
-    const uniqueThemes = [...new Set(Object.values(temasPorPregunta).map(t => t.tema))];
-    
-    uniqueThemes.forEach(theme => {
-        const option = document.createElement('option');
-        option.value = theme;
-        option.textContent = theme;
-        themeDropdown.appendChild(option);
-    });
-}
-
-
-function toggleSelectAllThemes(all) {
-    const themeDropdown = document.getElementById('themeDropdown');
-    if (!themeDropdown) return;
-    Array.from(themeDropdown.options).forEach(opt => opt.selected = all);
-    // Reflejar lista visible sin alterar el flujo original (filtrado sólo al pulsar "Aplicar")
-    if (typeof selectedThemes !== 'undefined') {
-        selectedThemes = all ? Array.from(themeDropdown.options).map(o => o.value) : [];
-    }
-    if (typeof updateSelectedThemesList === 'function') {
-        updateSelectedThemesList();
-    }
-}
-
-function applyThemeSelection() {
-    isRetryRun = false;
-    const themeDropdown = document.getElementById('themeDropdown');
-    selectedThemes = Array.from(themeDropdown.selectedOptions).map(option => option.value);
-    updateSelectedThemesList();
-
-    if (selectedThemes.length === 0) {
-        alert("Por favor, selecciona al menos un tema.");
-        return;
-    }
-
-    questions = [...allQuestions];
-    filterQuestionsByTheme();
-    shuffleQuestions();
-    currentQuestionIndex = 0;
-    resetQuizState();
-    showQuestion();
-
-    // Desplazar al contenedor del cuestionario para comenzar directamente
-    const qc = document.getElementById('quizContainer');
-    if (qc) {
-        qc.scrollIntoView({behavior: 'smooth', block: 'start'});
-    }
-    
-}
-
-function applyNumberSelection() {
-    isRetryRun = false;
-    const numbersInput = document.getElementById('numbersInput').value.trim();
-    if (!numbersInput) {
-        alert("Por favor, introduce números de preguntas.");
-        return;
-    }
-
-    const numbersArray = numbersInput.split(',')
-        .map(num => num.trim())
-        .filter(num => num !== '')
-        .map(num => parseInt(num))
-        .filter(num => !isNaN(num));
-
-    if (numbersArray.length === 0) {
-        alert("No se encontraron números válidos.");
-        return;
-    }
-
-    questions = [...allQuestions];
-    questions = questions.filter(q => numbersArray.includes(q.number));
-    
-    if (questions.length === 0) {
-        alert("No se encontraron preguntas con los números especificados.");
-        return;
-    }
-    
-    currentQuestionIndex = 0;
-    resetQuizState();
-    showQuestion();
-}
-
-function updateSelectedThemesList() {
-    const selectedThemesList = document.getElementById('selectedThemesList');
-    selectedThemesList.innerHTML = '';
-    selectedThemes.forEach(theme => {
-        const li = document.createElement('li');
-        li.textContent = theme;
-        selectedThemesList.appendChild(li);
-    });
-}
-
-function filterQuestionsByTheme() {
-    if (selectedThemes.length > 0) {
-        questions = questions.filter(q => selectedThemes.includes(temasPorPregunta[q.number]?.tema));
-    } else {
-        questions = [];
-    }
-}
-
-function resetQuizState() {
-    answeredQuestions = 0;
-    score = 0;
-    correctAnswersCount = 0;
-    incorrectAnswersCount = 0;
-    statsByTopic = {};
-    currentFailedQuestions = [];
-    updateStats();
-    document.getElementById('quizContainer').style.display = 'block';
-    document.getElementById('resultMessage')?.remove();
-    document.querySelector('button[onclick="restartFailedQuestions"]')?.remove();
-}
-
-function shuffleQuestions() {
-    for (let i = questions.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [questions[i], questions[j]] = [questions[j], questions[i]];
-    }
-}
-
-
-// --- Añadido mínimo: orden aleatorio de opciones por pregunta ---
-function getShuffledIndices(n) {
-    const arr = Array.from({length: n}, (_, i) => i);
-    for (let i = arr.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [arr[i], arr[j]] = [arr[j], arr[i]];
-    }
-    return arr;
-}
-
-function showQuestion() {
-    if (currentQuestionIndex >= questions.length) {
-        showFinalResult();
-        return;
-    }
-
-    const question = questions[currentQuestionIndex];
-    const temaInfo = temasPorPregunta[question.number] || { bloque: '', tema: '' };
-
-    document.getElementById('questionNumber').textContent = `Pregunta Nº ${question.number}`;
-    document.getElementById('questionText').innerHTML = `
-        <strong>${temaInfo.bloque}</strong><br>
-        <strong>${temaInfo.tema}</strong><br>
-        <hr>
-        ${question.text}
-    `;
-
-    const answerOptionsContainer = document.getElementById('answerOptions');
-    answerOptionsContainer.innerHTML = '';
-
-    
-    // Orden fijo alfabético de opciones por pregunta (a, b, c, d)
-    if (!question.optionOrder || !Array.isArray(question.optionOrder) || question.optionOrder.length !== question.options.length) {
-        question.optionOrder = question.options.map((_, i) => i);
-    }
-    question.optionOrder.forEach((origIdx, visibleIdx) => {
-        const button = document.createElement('button');
-        button.textContent = question.options[origIdx];
-        button.onclick = () => selectAnswer(visibleIdx); // visibleIdx -> índice visual
-        button.disabled = question.answered;
-        answerOptionsContainer.appendChild(button);
-    });
-        document.getElementById('feedback').textContent = '';
-    document.getElementById('nextButton').style.display = 'none';
-}
-
-function selectAnswer(index) {
-    const question = questions[currentQuestionIndex];
-    if (question.answered) return;
-
-    
-    // Convertir índice visual al índice original
-    const visibleIndex = index;
-    const originalIndex = (Array.isArray(question.optionOrder) && question.optionOrder.length > visibleIndex)
-        ? question.optionOrder[visibleIndex]
-        : visibleIndex;
-    const selectedAnswer = String.fromCharCode(97 + originalIndex);
-    
-    question.selectedAnswer = selectedAnswer;
-
-    // Parche mínimo: si no hay respuesta correcta en el TXT, no computa ni penaliza
-    if (!question.correctAnswer || !/^[a-d]$/.test(question.correctAnswer)) {
-        const feedback = document.getElementById('feedback');
-        feedback.textContent = 'No consta la respuesta correcta en el archivo. Esta pregunta no computa.';
-        feedback.style.color = 'orange';
-        question.answered = true;
-        document.getElementById('nextButton').style.display = 'block';
-        const buttons = document.querySelectorAll('#answerOptions button');
-        buttons.forEach(button => button.disabled = true);
-        return;
-    }
-
-    const isCorrect = selectedAnswer === question.correctAnswer;
-    const feedback = document.getElementById('feedback');
-    feedback.textContent = isCorrect ? '¡Correcto!' : `Incorrecto. La respuesta correcta era ${question.correctAnswer.toUpperCase()}.`;
-    feedback.style.color = isCorrect ? 'green' : 'red';
-
-    if (!question.answered) {
-        score += isCorrect ? 1 : -0.50;
-        answeredQuestions++;
-
-        if (isCorrect) {
-            correctAnswersCount++;
-        } else {
-            incorrectAnswersCount++;
-            if (!currentFailedQuestions.some(q => q.number === question.number)) {
-                currentFailedQuestions.push(question);
-            }
-            previousFailedQuestions = [...currentFailedQuestions];
-            updateFailedQuestionsDisplay();
-        }
-
-        question.answered = true;
-        document.getElementById('nextButton').style.display = 'block';
-        updateStats();
-
-        const buttons = document.querySelectorAll('#answerOptions button');
-        buttons.forEach(button => button.disabled = true);
-
-        const temaInfo = temasPorPregunta[question.number] || { tema: 'Sin tema' };
-        const tema = temaInfo.tema;
-
-        if (!statsByTopic[tema]) {
-            statsByTopic[tema] = {
-                total: 0,
-                correct: 0,
-                incorrect: 0
-            };
-        }
-
-        statsByTopic[tema].total++;
-        if (isCorrect) {
-            statsByTopic[tema].correct++;
-        } else {
-            statsByTopic[tema].incorrect++;
-        }
-    }
-}
-
-function skipQuestion() {
-    const question = questions[currentQuestionIndex];
-    if (question.answered) return;
-
-    const feedback = document.getElementById('feedback');
-    feedback.innerHTML = `No respondiste. La respuesta correcta era <strong>${question.correctAnswer.toUpperCase()}</strong>.`;
-    feedback.style.color = 'blue';
-
-    const buttons = document.querySelectorAll('#answerOptions button');
-    buttons.forEach(button => button.disabled = true);
-
-    const temaInfo = temasPorPregunta[question.number] || { tema: 'Sin tema' };
-    const tema = temaInfo.tema;
-
-    if (!statsByTopic[tema]) {
-        statsByTopic[tema] = {
-            total: 0,
-            correct: 0,
-            incorrect: 0
+      let m = null;
+      for (const r of startRegexes){
+        m = t.match(r);
+        if (m) break;
+      }
+      if (m){
+        if (cur) questions.push(cur);
+        cur = {
+          number: parseInt(m[1],10),
+          text: (m[2]||'').trim(),
+          options: [], correctAnswer:'', answered:false, selectedAnswer:null
         };
+        continue;
+      }
+
+      const mo = t.match(optRegex);
+      if (mo && cur){
+        cur.options.push(`${mo[1].toLowerCase()}) ${mo[2]}`.trim());
+        continue;
+      }
+
+      if (cur && t) cur.text += (cur.text ? ' ' : '') + t;
     }
+    if (cur) questions.push(cur);
 
-    statsByTopic[tema].total++;
-    question.answered = true;
-    answeredQuestions++;
-
-    document.getElementById('nextButton').style.display = 'block';
-    updateStats();
-}
-
-function showNextQuestion() {
-    currentQuestionIndex++;
-    showQuestion();
-}
-
-function updateStats() {
-    document.getElementById('answeredCount').textContent = answeredQuestions;
-    document.getElementById('totalQuestions').textContent = questions.length;
-    document.getElementById('score').textContent = score.toFixed(2);
-    document.getElementById('remainingCount').textContent = questions.length - answeredQuestions;
-    document.getElementById('correctCount').textContent = correctAnswersCount;
-    document.getElementById('incorrectCount').textContent = incorrectAnswersCount;
-}
-
-function showFinalResult() {
-    const resultMessage = document.createElement('button');
-    resultMessage.id = 'resultMessage';
-    
-    const passingScore = questions.length / 2;
-    
-    if (score >= passingScore) {
-        resultMessage.textContent = 'HAS APROBADO';
-        resultMessage.style.backgroundColor = 'green';
-    } else {
-        resultMessage.textContent = 'HAS SUSPENDIDO';
-        resultMessage.style.backgroundColor = 'red';
+    const answers = {};
+    for (let i=0;i<partA.length;i++){
+      const line = norm(partA[i]).trim();
+      if (!line) continue;
+      let m = line.match(/^(\d+)\s*(?:[-:])?\s*([a-dA-D])\b/);
+      if (m){
+        answers[parseInt(m[1],10)] = m[2].toLowerCase();
+      } else {
+        const only = line.match(/^(\d+)\b$/);
+        if (only) answers[parseInt(only[1],10)] = '';
+      }
     }
-    
-    resultMessage.style.color = 'white';
-    resultMessage.style.padding = '10px';
-    resultMessage.style.border = 'none';
-    resultMessage.style.cursor = 'pointer';
-    resultMessage.style.marginTop = '20px';
+    questions.forEach(q => { if (q.number in answers) q.correctAnswer = (answers[q.number]||'').toLowerCase(); });
+  }
 
-    document.getElementById('quizContainer').appendChild(resultMessage);
-
-    previousFailedQuestions = [...currentFailedQuestions];
-    currentFailedQuestions = [];
-    updateFailedQuestionsDisplay();
-    
-    const restartFailedButton = document.createElement('button');
-    restartFailedButton.textContent = 'Reiniciar preguntas falladas';
-    restartFailedButton.style.backgroundColor = 'orange';
-    restartFailedButton.style.color = 'white';
-    restartFailedButton.style.padding = '10px';
-    restartFailedButton.style.border = 'none';
-    restartFailedButton.style.cursor = 'pointer';
-    restartFailedButton.style.marginTop = '10px';
-    restartFailedButton.onclick = restartFailedQuestions;
-
-    document.getElementById('quizContainer').appendChild(restartFailedButton);
-}
-
-function restartFailedQuestions() {
-    if (previousFailedQuestions.length === 0) {
-        alert("No hay preguntas falladas en el intento anterior para reiniciar.");
-        return;
-    }
-
-    questions = previousFailedQuestions.map(q => ({ ...q }));
-    currentQuestionIndex = 0;
-    answeredQuestions = 0;
-    score = 0;
-    correctAnswersCount = 0;
-    incorrectAnswersCount = 0;
-    statsByTopic = {};
-    currentFailedQuestions = [];
-
-    questions.forEach(q => {
-        q.answered = false;
-        q.selectedAnswer = null;
+  // --- UI helpers
+  function populateThemeDropdown(){
+    const dd = $('#themeDropdown');
+    dd.innerHTML = '';
+    const temas = new Map();
+    Object.entries(temasPorPregunta).forEach(([num, info]) => {
+      if (!info?.tema) return;
+      temas.set(info.tema, true);
     });
-
-    document.getElementById('resultMessage')?.remove();
-    document.querySelector('button[onclick="restartFailedQuestions"]')?.remove();
-
-    showQuestion();
-    updateStats();
-}
-
-function startTimer() {
-    startTime = Date.now();
-    if (timerInterval) clearInterval(timerInterval);
-    timerInterval = setInterval(updateTimer, 1000);
-}
-
-function updateTimer() {
-    const elapsedTime = Math.floor((Date.now() - startTime) / 1000);
-    const hours = Math.floor(elapsedTime / 3600);
-    const minutes = Math.floor((elapsedTime % 3600) / 60);
-    const seconds = elapsedTime % 60;
-
-    const formattedTime = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
-    document.getElementById('timer').textContent = `Tiempo transcurrido: ${formattedTime}`;
-}
-
-function showStats() {
-    const statsTableBody = document.querySelector('#statsTable tbody');
-    statsTableBody.innerHTML = '';
-
-    const sortedStats = Object.entries(statsByTopic).sort((a, b) => {
-        const porcentajeA = (a[1].correct / a[1].total) * 100;
-        const porcentajeB = (b[1].correct / b[1].total) * 100;
-
-        if (porcentajeA !== porcentajeB) {
-            return porcentajeB - porcentajeA;
-        } else if (a[1].correct !== b[1].correct) {
-            return b[1].correct - a[1].correct;
-        } else {
-            return a[0].localeCompare(b[0]);
-        }
+    const sorted = [...temas.keys()].sort((a,b) => numFromTema(a) - numFromTema(b) || String(a).localeCompare(String(b)));
+    sorted.forEach(tema => {
+      const opt = document.createElement('option');
+      opt.value = tema; opt.textContent = tema;
+      dd.appendChild(opt);
     });
-
-    for (const [tema, temaStats] of sortedStats) {
-        const porcentajeAcierto = ((temaStats.correct / temaStats.total) * 100).toFixed(2);
-
-        statsTableBody.innerHTML += `
-            <tr>
-                <td>${tema}</td>
-                <td>${temaStats.total}</td>
-                <td>${temaStats.correct}</td>
-                <td>${temaStats.incorrect}</td>
-                <td>${porcentajeAcierto}%</td>
-            </tr>
-        `;
-    }
-
-    document.getElementById('statsModal').style.display = 'block';
-}
-
-function closeStats() {
-    document.getElementById('statsModal').style.display = 'none';
-}
-
-function restartWithFailedQuestions() {
-    isRetryRun = true;
-    retryRunInitialCount = (previousFailedQuestions || []).length;
-    retryRunInitialList = (previousFailedQuestions || []).map(q => q.number).sort((a,b)=>a-b);
-    if (typeof updateRetryInfoBanner === 'function') updateRetryInfoBanner();
-if (!previousFailedQuestions || previousFailedQuestions.length === 0) {
-        alert('No hay preguntas falladas del intento anterior.');
-        return;
-    }
-    questions = previousFailedQuestions.map(q => ({...q}));
-    questions.forEach(q => {
-        q.answered = false;
-        if (q.optionOrder) delete q.optionOrder;
+  }
+  function toggleSelectAllThemes(all){
+    const dd = $('#themeDropdown');
+    const opts = Array.from(dd.options);
+    // ordenar por número de tema
+    const sorted = opts.sort((a,b) => numFromTema(a.value) - numFromTema(b.value) || a.value.localeCompare(b.value));
+    // aplicar selección respetando el orden
+    sorted.forEach(o => o.selected = all);
+    selectedThemes = all ? sorted.map(o => o.value) : [];
+    updateSelectedThemesList(); // mostrará orden creciente
+  }
+  function updateSelectedThemesList(){
+    const ul = $('#selectedThemesList');
+    ul.innerHTML = '';
+    const sorted = selectedThemes.slice().sort((a,b) => numFromTema(a) - numFromTema(b) || String(a).localeCompare(String(b)));
+    sorted.forEach(t => {
+      const li = document.createElement('li');
+      li.textContent = t; ul.appendChild(li);
     });
+  }
 
-    currentFailedQuestions = [];
+  // Aleatorización: barajar preguntas seleccionadas (no opciones)
+  function applyThemeSelection(){
+    isRetryRun = false; retryRunInitialList = [];
+    const dd = $('#themeDropdown');
+    selectedThemes = Array.from(dd.selectedOptions).map(o=>o.value);
+    updateSelectedThemesList();
+    if (!selectedThemes.length){ alert('Selecciona al menos un tema.'); return; }
+    questions = allQuestions.filter(q => selectedThemes.includes(temasPorPregunta[q.number]?.tema));
+    if (!questions.length){ alert('No hay preguntas para los temas elegidos.'); return; }
+    shuffleInPlace(questions);
     currentQuestionIndex = 0;
     resetQuizState();
-    shuffleQuestions();
     showQuestion();
-    if (typeof updateFailedQuestionsDisplay === 'function') updateFailedQuestionsDisplay();
+    scrollToQuiz(); // auto-scroll al iniciar
+  }
 
-    const qc = document.getElementById('quizContainer');
-    if (qc) {
-        qc.scrollIntoView({behavior: 'smooth', block: 'start'});
+  function applyNumberSelection(){
+    isRetryRun = false; retryRunInitialList = [];
+    const raw = $('#numbersInput').value.trim();
+    if (!raw){ alert('Introduce números de pregunta.'); return; }
+    const nums = raw.split(',').map(s=>parseInt(s.trim(),10)).filter(n=>!isNaN(n));
+    questions = allQuestions.filter(q => nums.includes(q.number));
+    if (!questions.length){ alert('No hay coincidencias para esos números.'); return; }
+    shuffleInPlace(questions);
+    currentQuestionIndex = 0;
+    resetQuizState();
+    showQuestion();
+    scrollToQuiz(); // auto-scroll al iniciar
+  }
+
+  function resetQuizState(){
+    answeredQuestions = 0; score = 0;
+    correctAnswersCount = 0; incorrectAnswersCount = 0;
+    statsByTopic = {}; currentFailedQuestions = [];
+    updateStats();
+  }
+
+  function showQuestion(){
+    if (currentQuestionIndex >= questions.length){ showFinalResult(); return; }
+    const q = questions[currentQuestionIndex];
+    $('#questionNumber').textContent = `Pregunta Nº ${q.number}`;
+    const meta = temasPorPregunta[q.number] || { bloque:'', tema:'Sin tema' };
+    $('#questionMeta').innerHTML = `<strong>${meta.bloque||''}</strong> · <em>${meta.tema||''}</em>`;
+    $('#questionText').textContent = q.text;
+    const cont = $('#answerOptions'); cont.innerHTML = '';
+    // Orden alfabético fijo a), b), c), d)
+    q.optionOrder = q.options.map((_,i)=>i); // sin barajar opciones
+    q.options.forEach((opt, idx) => {
+      const btn = document.createElement('button');
+      btn.textContent = opt;
+      btn.addEventListener('click', () => selectAnswer(idx));
+      cont.appendChild(btn);
+    });
+    $('#feedback').textContent = '';
+    $('#nextButton').style.display = 'none';
+  }
+
+  function selectAnswer(visibleIdx){
+    const q = questions[currentQuestionIndex];
+    const origIdx = q.optionOrder?.[visibleIdx] ?? visibleIdx;
+    const selected = String.fromCharCode(97 + origIdx);
+    const isCorrect = String(selected).toLowerCase() === String(q.correctAnswer||'').toLowerCase();
+    q.selectedAnswer = selected;
+
+    if (!q.correctAnswer){
+      $('#feedback').textContent = 'Sin respuesta oficial en el TXT. No computa.';
+    } else {
+      $('#feedback').textContent = isCorrect ? '¡Correcto!' : `Incorrecto. La correcta era ${q.correctAnswer.toUpperCase()}.`;
     }
-}
+
+    answeredQuestions++;
+    if (isCorrect) { correctAnswersCount++; score += 1; }
+    else { incorrectAnswersCount++; score -= 0.33; if (!currentFailedQuestions.some(p=>p.number===q.number)) currentFailedQuestions.push(q); previousFailedQuestions = [...currentFailedQuestions]; }
+    updateFailedQuestionsDisplay();
+    updateStats();
+
+    const cont = $('#answerOptions');
+    const btns = cont.querySelectorAll('button');
+    const correctIdx = q.optionOrder.findIndex(i => String.fromCharCode(97+i) === String(q.correctAnswer).toLowerCase());
+    btns.forEach((b,i)=>{
+      if (i === visibleIdx) b.classList.add(isCorrect ? 'correct':'incorrect');
+      if (i === correctIdx) b.classList.add('correct');
+      b.disabled = true;
+    });
+    $('#nextButton').style.display = 'inline-block';
+  }
+
+  function skipQuestion(){
+    $('#feedback').textContent = 'Pregunta saltada. No suma ni resta.';
+    answeredQuestions++; updateStats();
+    $('#answerOptions').querySelectorAll('button').forEach(b=>b.disabled=true);
+    $('#nextButton').style.display = 'inline-block';
+  }
+
+  function showNextQuestion(){ currentQuestionIndex++; showQuestion(); }
+
+  function updateStats(){
+    $('#totalQuestions').textContent = questions.length;
+    $('#answeredCount').textContent = answeredQuestions;
+    $('#remainingCount').textContent = Math.max(0, questions.length-answeredQuestions);
+    $('#correctCount').textContent = correctAnswersCount;
+    $('#incorrectCount').textContent = incorrectAnswersCount;
+    $('#score').textContent = score.toFixed(2);
+  }
+
+  function showStats(){
+    const tbody = $('#statsTable tbody'); tbody.innerHTML='';
+    const map = {};
+    questions.forEach(q => {
+      const tema = (temasPorPregunta[q.number]?.tema) || 'Sin tema';
+      map[tema] = map[tema] || { total:0, correct:0, incorrect:0 };
+      map[tema].total++;
+      if (q.selectedAnswer){
+        if (String(q.selectedAnswer).toLowerCase() === String(q.correctAnswer||'').toLowerCase()) map[tema].correct++;
+        else map[tema].incorrect++;
+      }
+    });
+    Object.entries(map).forEach(([tema, st]) => {
+      const tr = document.createElement('tr');
+      const pct = st.total ? Math.round((st.correct/st.total)*100) : 0;
+      tr.innerHTML = `<td>${tema}</td><td>${st.total}</td><td>${st.correct}</td><td>${st.incorrect}</td><td>${pct}%</td>`;
+      tbody.appendChild(tr);
+    });
+    $('#statsModal').style.display = 'flex';
+  }
+  function closeStats(){ $('#statsModal').style.display = 'none'; }
+
+  function createFailedQuestionsDisplay(){
+    const panel = $('#failedPanel'); panel.style.display='block';
+    updateFailedQuestionsDisplay();
+  }
+  function updateFailedQuestionsDisplay(){
+    const cont = $('#failedQuestionsDisplay');
+    if (!cont) return;
+    // elegir lista a mostrar: si estamos en retry, mostrar SIEMPRE el snapshot inicial
+    let numbers = [];
+    if (isRetryRun && retryRunInitialList.length){
+      numbers = retryRunInitialList.slice();
+    } else if (Array.isArray(previousFailedQuestions) && previousFailedQuestions.length){
+      numbers = previousFailedQuestions.map(q => q.number);
+    }
+    numbers = numbers.filter(n => typeof n === 'number' && !Number.isNaN(n)).sort((a,b)=>a-b);
+    cont.innerHTML = numbers.length
+      ? `<div id="failedQuestionsText"><strong>Preguntas falladas en el intento anterior:</strong><br>${numbers.join(', ')}</div>
+         <div style="margin-top:8px;"><button id="restartFailedBtn">Reiniciar SOLO con estas</button></div>`
+      : `No hay preguntas falladas en intentos anteriores.`;
+    document.getElementById('restartFailedBtn')?.addEventListener('click', () => {
+      // Fijar snapshot y activar retry
+      if (Array.isArray(previousFailedQuestions) && previousFailedQuestions.length){
+        retryRunInitialList = previousFailedQuestions.map(q=>q.number).filter(n=>typeof n==='number'&&!Number.isNaN(n)).sort((a,b)=>a-b);
+      } else {
+        retryRunInitialList = [];
+      }
+      isRetryRun = true;
+      // Reiniciar cuestionario SOLO con esas falladas, aleatorias
+      questions = previousFailedQuestions.slice();
+      shuffleInPlace(questions);
+      currentQuestionIndex = 0;
+      resetQuizState();
+      showQuestion();
+      updateFailedQuestionsDisplay(); // mantener texto visible con snapshot
+      scrollToQuiz(); // auto-scroll al iniciar
+    });
+  }
+
+  // Timer
+  function startTimer(){
+    startTime = Date.now();
+    clearInterval(timerInterval);
+    timerInterval = setInterval(() => {
+      const diff = Date.now()-startTime;
+      const h = Math.floor(diff/3600000);
+      const m = Math.floor((diff%3600000)/60000);
+      const s = Math.floor((diff%60000)/1000);
+      $('#timer').textContent = `Tiempo transcurrido: ${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+    }, 1000);
+  }
+
+})();
