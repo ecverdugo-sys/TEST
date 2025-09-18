@@ -1,15 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-
     <application
-        android:label="Quiz por Temas"
+        android:label="TEST POR TEMAS"
         android:icon="@mipmap/ic_launcher"
         android:allowBackup="true"
         android:supportsRtl="true"
         android:theme="@style/Theme.Material3.DayNight.NoActionBar"
         android:usesCleartextTraffic="true">
         <!-- usesCleartextTraffic=true solo afecta si tu HTML carga http://; si no lo usas, puedes quitarlo -->
-
         <activity
             android:name=".MainActivity"
             android:exported="true">
@@ -18,6 +16,5 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-
     </application>
 </manifest>
