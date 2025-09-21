@@ -3,10 +3,10 @@ plugins {
     id 'org.jetbrains.kotlin.android'
 }
 android {
-    namespace 'com.example.testa1general'
+    namespace 'com.example.testconfig'
     compileSdk 35
     defaultConfig {
-        applicationId "com.example.testa1general"
+        applicationId "com.example.testconfig"
         minSdk 24
         targetSdk 35
         versionCode 1
