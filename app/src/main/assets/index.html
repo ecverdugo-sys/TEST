@@ -8,16 +8,105 @@
 </head>
 <body>
   <header>
-    <h1>CUESTIONARIO POR TEMAS</h1>
-    <p class="subtitle">Carga un TXT y selecciona temas o números</p>
+    <h1>TEST A1 GENERAL 2020-23</h1>
+    <p class="subtitle">selecciona temas o números</p>
   </header>
 
-  <section class="card">
+  <section id="typographySettings" class="card">
+      <h2 style="margin-top:0;">Apariencia</h2>
+      <div id="typographyBasic" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;">
+        <div>
+          <label class="label" for="qFontSize">Tamaño del enunciado</label>
+          <input id="qFontSize" type="range" min="14" max="36" step="1" value="22">
+          <div class="muted">Valor: <span id="qFontSizeValue">22</span> px</div>
+        </div>
+        <div>
+          <label class="label" for="optFontSize">Tamaño de las opciones</label>
+          <input id="optFontSize" type="range" min="12" max="28" step="1" value="18">
+          <div class="muted">Valor: <span id="optFontSizeValue">18</span> px</div>
+        </div>
+        <div>
+          <label class="label" for="persistTypography">Guardar configuración (toda la app)</label>
+          <select id="persistAll">
+            <option value="off" selected>No (usar valores por defecto al iniciar)</option>
+            <option value="on">Sí (recordar mis ajustes)</option>
+          </select>
+          <div class="muted">Si eliges "No", los cambios solo duran mientras esta página esté abierta.</div>
+        </div>
+      </div>
+    </section>
+
+<section id="advancedSettings" class="card">
+  <h2 style="margin-top:0;">Más opciones</h2>
+  <div class="grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;">
+    <div>
+      <label class="label" for="optColumns">Densidad (opciones por fila)</label>
+      <select id="optColumns">
+        <option value="1">1 columna</option>
+        <option value="2">2 columnas</option>
+      </select>
+    </div>
+    <div>
+      <label class="label" for="btnPadding">Tamaño de botones (padding)</label>
+      <input id="btnPadding" type="range" min="6" max="22" step="1" value="10"/>
+      <div class="muted">Valor: <span id="btnPaddingValue">10</span> px</div>
+    </div>
+    <div>
+      <label class="label" for="themePreset">Tema</label>
+      <select id="themePreset">
+        <option value="off">Sin cambios</option>
+        <option value="dark">Oscuro</option>
+        <option value="contrast">Alto contraste</option>
+      </select>
+      <div class="muted">“Sin cambios” mantiene exactamente tu estilo actual.</div>
+    </div>
+    <div>
+      <label class="label" for="kbdShortcuts">Atajos de teclado</label>
+      <select id="kbdShortcuts">
+        <option value="off">Desactivados</option>
+        <option value="on">Activados (A/B/C/D, Enter)</option>
+      </select>
+    </div>
+    <div>
+      <label class="label" for="autoNext">Auto-siguiente</label>
+      <select id="autoNext">
+        <option value="off">Desactivado</option>
+        <option value="on">Activado</option>
+      </select>
+      <label class="label" for="autoNextDelay" style="margin-top:6px;">Retardo (ms)</label>
+      <input id="autoNextDelay" type="range" min="0" max="2000" step="100" value="0"/>
+      <div class="muted">Valor: <span id="autoNextDelayValue">0</span> ms</div>
+    </div>
+    <div>
+      <label class="label" for="toggleTimer">Cronómetro</label>
+      <select id="toggleTimer">
+        <option value="show">Mostrar</option>
+        <option value="hide">Ocultar</option>
+      </select>
+    </div>
+    <div>
+      <label class="label" for="rememberThemes">Recordar selección de temas</label>
+      <select id="rememberThemes">
+        <option value="off">No</option>
+        <option value="on">Sí</option>
+      </select>
+      <div class="muted">Funciona si tu lista de temas está dentro de #themeSelector.</div>
+    </div>
+  </div>
+</section>
+
+<section class="card" id="fileSection" style="display:none;">
     <label class="label">Selecciona archivo TXT</label>
     <input type="file" id="fileInput" accept=".txt">
     <p id="fileHint" class="muted">Archivos admitidos: TXT con bloques de preguntas y sección "RESPUESTAS CORRECTAS".</p>
     <div id="loadStatus" class="muted"></div>
   </section>
+
+<!-- === Configuración avanzada (no intrusiva) === -->
+
+<!-- === Apariencia (mínimo) === -->
+    
+    
 
   <section id="themeSelector" class="card" style="display:none;">
     <h2>Selección por temas</h2>
